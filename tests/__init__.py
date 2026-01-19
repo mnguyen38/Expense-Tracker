@@ -1,0 +1,1 @@
+"""Expense tracker test suite."""

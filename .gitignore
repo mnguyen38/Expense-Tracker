@@ -1,0 +1,69 @@
+# env
+.env
+*.env.local
+.env.*
+!.env.example
+
+# Google API credentials
+credentials.json
+gmail_credentials.json
+*_credentials.json
+*.pickle
+token.pickle
+token.json
+
+# Personal data
+data/
+output/
+statements/
+
+# Build artifacts
+dist/
+build/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.claude/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
