@@ -1,21 +1,20 @@
 """Tests for email notification system."""
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 
-from notifications import (
-    load_thresholds,
-    save_thresholds,
-    send_email,
-    check_spending_threshold,
-    reset_month_thresholds,
-    send_spending_summary,
+import pytest
+
+from expense_tracker.notifications import (
     _format_category_rows,
     _format_category_text,
     _format_top_transactions,
-    THRESHOLD_FILE,
+    check_spending_threshold,
+    load_thresholds,
+    reset_month_thresholds,
+    save_thresholds,
+    send_email,
+    send_spending_summary,
 )
 
 
@@ -26,7 +25,7 @@ class TestLoadThresholds:
         """Test loading when file doesn't exist."""
         # Point to non-existent file
         fake_file = temp_data_dir / "nonexistent.json"
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", fake_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", fake_file)
 
         result = load_thresholds()
         assert result == {"notified": {}}
@@ -36,7 +35,7 @@ class TestLoadThresholds:
         threshold_file = temp_data_dir / "thresholds.json"
         data = {"notified": {"1/2025": [1000, 2000]}}
         threshold_file.write_text(json.dumps(data))
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         result = load_thresholds()
         assert result == data
@@ -49,7 +48,7 @@ class TestSaveThresholds:
     def test_save_creates_directory(self, tmp_path, monkeypatch):
         """Test that save creates parent directory if needed."""
         threshold_file = tmp_path / "new_dir" / "thresholds.json"
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         data = {"notified": {"1/2025": [1000]}}
         save_thresholds(data)
@@ -62,7 +61,7 @@ class TestSaveThresholds:
         """Test that save overwrites existing file."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         data = {"notified": {"1/2025": [1000, 2000]}}
         save_thresholds(data)
@@ -79,7 +78,7 @@ class TestSendEmail:
         with pytest.raises(ValueError, match="SMTP credentials not found"):
             send_email("test@example.com", "Subject", "Message")
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_send_email_success(self, mock_smtp, mock_env_vars):
         """Test successful email sending."""
         mock_server = MagicMock()
@@ -92,7 +91,7 @@ class TestSendEmail:
         mock_server.login.assert_called_once()
         mock_server.sendmail.assert_called_once()
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_send_email_with_explicit_credentials(self, mock_smtp, clean_env):
         """Test sending with explicit credentials."""
         mock_server = MagicMock()
@@ -108,7 +107,7 @@ class TestSendEmail:
 
         assert result is True
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_send_email_failure(self, mock_smtp, mock_env_vars):
         """Test email sending failure."""
         mock_smtp.return_value.__enter__.side_effect = Exception("Connection failed")
@@ -117,7 +116,7 @@ class TestSendEmail:
 
         assert result is False
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_send_email_custom_server(self, mock_smtp, clean_env):
         """Test sending with custom SMTP server."""
         mock_server = MagicMock()
@@ -141,18 +140,18 @@ class TestCheckSpendingThreshold:
 
     def test_no_notification_without_email(self, clean_env, temp_data_dir, monkeypatch):
         """Test that no notification is sent without NOTIFY_EMAIL."""
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", temp_data_dir / "thresholds.json")
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", temp_data_dir / "thresholds.json")
 
         result = check_spending_threshold(1500.00, "1/2025")
 
         assert result == []
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_notifies_on_first_threshold(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test notification when first threshold is crossed."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = True
 
@@ -161,12 +160,12 @@ class TestCheckSpendingThreshold:
         assert result == [1000.0]
         mock_send.assert_called_once()
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_notifies_on_multiple_thresholds(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test notification when multiple thresholds are crossed."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = True
 
@@ -175,12 +174,12 @@ class TestCheckSpendingThreshold:
         assert result == [1000.0, 2000.0]
         assert mock_send.call_count == 2
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_skips_already_notified(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test that already notified thresholds are skipped."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {"1/2025": [1000.0]}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = True
 
@@ -190,12 +189,12 @@ class TestCheckSpendingThreshold:
         assert result == []
         mock_send.assert_not_called()
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_notifies_new_threshold_only(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test that only new thresholds are notified."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {"1/2025": [1000.0]}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = True
 
@@ -205,12 +204,12 @@ class TestCheckSpendingThreshold:
         assert result == [2000.0]
         assert mock_send.call_count == 1
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_custom_threshold_interval(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test custom threshold interval."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = True
 
@@ -222,24 +221,24 @@ class TestCheckSpendingThreshold:
 
         assert result == [500.0]
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_below_threshold_no_notification(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test that no notification is sent when below threshold."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         result = check_spending_threshold(500.00, "1/2025")
 
         assert result == []
         mock_send.assert_not_called()
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_saves_notified_thresholds(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test that notified thresholds are saved to file."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = True
 
@@ -248,12 +247,12 @@ class TestCheckSpendingThreshold:
         saved = json.loads(threshold_file.read_text())
         assert 1000.0 in saved["notified"]["1/2025"]
 
-    @patch("notifications.send_email")
+    @patch("expense_tracker.notifications.send_email")
     def test_handles_email_failure(self, mock_send, mock_env_vars, temp_data_dir, monkeypatch):
         """Test handling when email fails to send."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_send.return_value = False  # Email fails
 
@@ -271,7 +270,7 @@ class TestResetMonthThresholds:
         threshold_file = temp_data_dir / "thresholds.json"
         data = {"notified": {"1/2025": [1000, 2000], "2/2025": [1000]}}
         threshold_file.write_text(json.dumps(data))
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         reset_month_thresholds("1/2025")
 
@@ -287,7 +286,7 @@ class TestResetMonthThresholds:
         threshold_file = temp_data_dir / "thresholds.json"
         data = {"notified": {"1/2025": [1000]}}
         threshold_file.write_text(json.dumps(data))
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         reset_month_thresholds("3/2025")
 
@@ -299,12 +298,12 @@ class TestResetMonthThresholds:
 class TestEmailContent:
     """Tests for email content formatting."""
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_subject_format(self, mock_smtp, mock_env_vars, temp_data_dir, monkeypatch):
         """Test that email subject is formatted correctly."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_server = MagicMock()
         mock_smtp.return_value.__enter__.return_value = mock_server
@@ -317,12 +316,12 @@ class TestEmailContent:
         assert "Spending Alert" in message
         assert "$1,000" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_body_format(self, mock_smtp, mock_env_vars, temp_data_dir, monkeypatch):
         """Test that email body contains spending info."""
         threshold_file = temp_data_dir / "thresholds.json"
         threshold_file.write_text('{"notified": {}}')
-        monkeypatch.setattr("notifications.THRESHOLD_FILE", threshold_file)
+        monkeypatch.setattr("expense_tracker.notifications.THRESHOLD_FILE", threshold_file)
 
         mock_server = MagicMock()
         mock_smtp.return_value.__enter__.return_value = mock_server
@@ -405,7 +404,7 @@ class TestFormatCategoryText:
         result = _format_category_text(by_category)
 
         # Should have consistent spacing
-        lines = [l for l in result.split("\n") if l.strip()]
+        lines = [line for line in result.split("\n") if line.strip()]
         assert len(lines) == 2
 
 
@@ -432,7 +431,12 @@ class TestFormatTopTransactions:
     def test_expense_transactions(self):
         """Test formatting expense transactions."""
         transactions = [
-            {"date": "2025-01-01", "description": "Amazon Purchase", "amount": -150.00, "category": "Shopping"},
+            {
+                "date": "2025-01-01",
+                "description": "Amazon Purchase",
+                "amount": -150.00,
+                "category": "Shopping",
+            },
             {"date": "2025-01-02", "description": "Grocery Store", "amount": -75.50, "category": "Groceries"},
         ]
         html, text = _format_top_transactions(transactions)
@@ -487,7 +491,7 @@ class TestSendSpendingSummary:
                 by_category={"Groceries": 500.00},
             )
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_send_summary_success(self, mock_smtp, mock_env_vars):
         """Test successful summary email sending."""
         mock_server = MagicMock()
@@ -505,7 +509,7 @@ class TestSendSpendingSummary:
         mock_server.login.assert_called_once()
         mock_server.sendmail.assert_called_once()
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_contains_html_and_text(self, mock_smtp, mock_env_vars):
         """Test that email contains both HTML and plain text versions."""
         mock_server = MagicMock()
@@ -526,7 +530,7 @@ class TestSendSpendingSummary:
         assert "text/plain" in message
         assert "text/html" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_contains_categories(self, mock_smtp, mock_env_vars):
         """Test that email contains category breakdown."""
         mock_server = MagicMock()
@@ -547,7 +551,7 @@ class TestSendSpendingSummary:
         assert "400.00" in message
         assert "350.00" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_with_income(self, mock_smtp, mock_env_vars):
         """Test that income is included when provided."""
         mock_server = MagicMock()
@@ -567,7 +571,7 @@ class TestSendSpendingSummary:
         assert "5,000.00" in message
         assert "Income" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_with_threshold_alert(self, mock_smtp, mock_env_vars):
         """Test that threshold alert is included when provided."""
         mock_server = MagicMock()
@@ -587,14 +591,19 @@ class TestSendSpendingSummary:
         assert "Threshold Alert" in message or "threshold" in message.lower()
         assert "1,000" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_with_transactions(self, mock_smtp, mock_env_vars):
         """Test that top transactions are included when provided."""
         mock_server = MagicMock()
         mock_smtp.return_value.__enter__.return_value = mock_server
 
         transactions = [
-            {"date": "2025-01-15", "description": "AMAZON PURCHASE", "amount": -150.00, "category": "Shopping"},
+            {
+                "date": "2025-01-15",
+                "description": "AMAZON PURCHASE",
+                "amount": -150.00,
+                "category": "Shopping",
+            },
             {"date": "2025-01-16", "description": "GROCERY STORE", "amount": -75.50, "category": "Groceries"},
         ]
 
@@ -612,7 +621,7 @@ class TestSendSpendingSummary:
         assert "AMAZON PURCHASE" in message
         assert "GROCERY STORE" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_subject_with_threshold(self, mock_smtp, mock_env_vars):
         """Test that subject includes emoji when threshold is crossed."""
         mock_server = MagicMock()
@@ -632,7 +641,7 @@ class TestSendSpendingSummary:
         # Subject should contain money emoji when threshold crossed
         assert "Subject:" in message
 
-    @patch("notifications.smtplib.SMTP")
+    @patch("expense_tracker.notifications.smtplib.SMTP")
     def test_email_failure_returns_false(self, mock_smtp, mock_env_vars):
         """Test that email failure returns False."""
         mock_smtp.return_value.__enter__.side_effect = Exception("Connection failed")
@@ -645,3 +654,26 @@ class TestSendSpendingSummary:
         )
 
         assert result is False
+
+
+class TestHtmlEscaping:
+    """Merchant names come from bank data and must not inject HTML into emails."""
+
+    def test_top_transactions_escape_description(self):
+        txns = [
+            {
+                "date": "2026-01-01",
+                "description": "<script>alert(1)</script>",
+                "amount": -5.0,
+                "category": "Misc",
+            }
+        ]
+        html_out, text = _format_top_transactions(txns)
+        assert "<script>" not in html_out
+        assert "&lt;script&gt;" in html_out
+        assert "<script>" in text  # plain-text part is not HTML
+
+    def test_category_rows_escape_category(self):
+        rows = _format_category_rows({"<b>Food</b>": 10.0}, 10.0)
+        assert "<b>Food</b>" not in rows
+        assert "&lt;b&gt;Food&lt;/b&gt;" in rows

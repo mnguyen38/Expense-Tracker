@@ -1,7 +1,8 @@
 """Tests for Bank of America statement parser."""
 
 import pytest
-from parsers.boa import BOAParser
+
+from expense_tracker.parsers.boa import BOAParser
 
 
 class TestBOAParser:
@@ -362,3 +363,19 @@ class TestBOAParserPeriodDates:
         text = "No period information"
         result = parser._extract_period_dates(text)
         assert result is None
+
+
+class TestPeriodFormats:
+    """Bank-account and credit-card statements write their period differently."""
+
+    def test_checking_period_with_full_dates(self):
+        from expense_tracker.parsers.boa import BOAParser
+
+        text = "Your Adv Plus Banking\nfor December 19, 2025 to January 20, 2026\nAccount number"
+        assert BOAParser()._extract_period_dates(text) == ("2025-12-19", "2026-01-20")
+
+    def test_credit_card_period_across_year_end(self):
+        from expense_tracker.parsers.boa import BOAParser
+
+        text = "Statement\nDecember 12 - January 11, 2026\n"
+        assert BOAParser()._extract_period_dates(text) == ("2025-12-12", "2026-01-11")

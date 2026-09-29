@@ -1,11 +1,9 @@
+# Runtime dependencies; `pip install .` installs these plus the CLI.
+anthropic>=1.8.0,<2
 pdfplumber>=0.10.0
-anthropic>=0.40.0
 python-dotenv>=1.0.0
+# Optional Google integrations (Sheets sync, Gmail import): pip install ".[google]"
 gspread>=6.0.0
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
 google-api-python-client>=2.0.0
-
-# Test dependencies
-pytest>=8.0.0
-pytest-cov>=4.0.0

@@ -1,16 +1,17 @@
 """Tests for AI-powered transaction categorizer."""
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch
 
-from categorizer import (
-    categorize_transactions,
-    get_summary,
+import pytest
+
+from expense_tracker.categorizer import (
+    BATCH_SIZE,
+    CATEGORIES,
     _categorize_batch,
     _find_closest_category,
-    CATEGORIES,
-    BATCH_SIZE,
+    categorize_transactions,
+    get_summary,
 )
 
 
@@ -23,7 +24,7 @@ class TestCategories:
 
     def test_required_categories_present(self):
         """Test that key categories are present."""
-        required = ["Housing", "Groceries", "Eating Out", "Rideshare", "Misc", "Apple"]
+        required = ["Housing", "Groceries", "Eating Out", "Rideshare", "Misc", "Subscriptions"]
         for cat in required:
             assert cat in CATEGORIES
 
@@ -69,7 +70,9 @@ class TestCategorizeBatch:
     def test_categorize_batch_success(self, mock_client, sample_transactions):
         """Test successful batch categorization."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text='["Rideshare", "Groceries", "Entertainment", "Misc", "Apple"]')]
+        mock_response.content = [
+            MagicMock(text='["Rideshare", "Groceries", "Entertainment", "Misc", "Subscriptions"]')
+        ]
         mock_client.messages.create.return_value = mock_response
 
         result = _categorize_batch(mock_client, sample_transactions)
@@ -77,13 +80,15 @@ class TestCategorizeBatch:
         assert len(result) == 5
         assert result[0] == "Rideshare"
         assert result[1] == "Groceries"
-        assert result[4] == "Apple"
+        assert result[4] == "Subscriptions"
 
     def test_categorize_batch_validates_categories(self, mock_client, sample_transactions):
         """Test that invalid categories are normalized."""
         mock_response = MagicMock()
         # Include an invalid category
-        mock_response.content = [MagicMock(text='["Rideshare", "Invalid", "Entertainment", "Misc", "Apple"]')]
+        mock_response.content = [
+            MagicMock(text='["Rideshare", "Invalid", "Entertainment", "Misc", "Subscriptions"]')
+        ]
         mock_client.messages.create.return_value = mock_response
 
         result = _categorize_batch(mock_client, sample_transactions)
@@ -110,9 +115,11 @@ class TestCategorizeBatch:
         """Test that extra categories are truncated."""
         mock_response = MagicMock()
         # Return more categories than transactions
-        mock_response.content = [MagicMock(
-            text='["Rideshare", "Groceries", "Entertainment", "Misc", "Apple", "Extra1", "Extra2"]'
-        )]
+        mock_response.content = [
+            MagicMock(
+                text='["Rideshare", "Groceries", "Entertainment", "Misc", "Subscriptions", "Extra1", "Extra2"]'
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         result = _categorize_batch(mock_client, sample_transactions)
@@ -159,7 +166,7 @@ class TestCategorizeTransactions:
 
     def test_accepts_explicit_api_key(self, sample_transactions):
         """Test that explicit API key is used."""
-        with patch("categorizer.anthropic.Anthropic") as mock_anthropic:
+        with patch("expense_tracker.categorizer.anthropic.Anthropic") as mock_anthropic:
             mock_client = MagicMock()
             mock_anthropic.return_value = mock_client
             mock_response = MagicMock()
@@ -171,13 +178,15 @@ class TestCategorizeTransactions:
 
             mock_anthropic.assert_called_with(api_key="explicit-key")
 
-    @patch("categorizer.anthropic.Anthropic")
+    @patch("expense_tracker.categorizer.anthropic.Anthropic")
     def test_adds_category_to_transactions(self, mock_anthropic, sample_transactions):
         """Test that category is added to each transaction."""
         mock_client = MagicMock()
         mock_anthropic.return_value = mock_client
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text='["Rideshare", "Groceries", "Entertainment", "Misc", "Apple"]')]
+        mock_response.content = [
+            MagicMock(text='["Rideshare", "Groceries", "Entertainment", "Misc", "Subscriptions"]')
+        ]
         mock_client.messages.create.return_value = mock_response
 
         result = categorize_transactions(sample_transactions, api_key="test-key")
@@ -187,13 +196,15 @@ class TestCategorizeTransactions:
             assert "category" in txn
             assert txn["category"] in CATEGORIES
 
-    @patch("categorizer.anthropic.Anthropic")
+    @patch("expense_tracker.categorizer.anthropic.Anthropic")
     def test_preserves_original_fields(self, mock_anthropic, sample_transactions):
         """Test that original transaction fields are preserved."""
         mock_client = MagicMock()
         mock_anthropic.return_value = mock_client
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text='["Rideshare", "Groceries", "Entertainment", "Misc", "Apple"]')]
+        mock_response.content = [
+            MagicMock(text='["Rideshare", "Groceries", "Entertainment", "Misc", "Subscriptions"]')
+        ]
         mock_client.messages.create.return_value = mock_response
 
         result = categorize_transactions(sample_transactions, api_key="test-key")
@@ -203,7 +214,7 @@ class TestCategorizeTransactions:
             assert txn["description"] == sample_transactions[i]["description"]
             assert txn["amount"] == sample_transactions[i]["amount"]
 
-    @patch("categorizer.anthropic.Anthropic")
+    @patch("expense_tracker.categorizer.anthropic.Anthropic")
     def test_batches_large_lists(self, mock_anthropic):
         """Test that large transaction lists are batched."""
         # Create more transactions than BATCH_SIZE
@@ -331,3 +342,96 @@ class TestGetSummaryWithMixedTransactions:
 
         net = result["total_income"] - result["total_spending"]
         assert net == 2000.00
+
+
+class TestStructuredOutput:
+    """Categorization requests are constrained to the category list."""
+
+    def test_schema_restricts_to_categories(self, sample_transactions):
+        from expense_tracker.categorizer import CATEGORY_SCHEMA
+
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=json.dumps({"categories": ["Rideshare"] * 5}))]
+        mock_client.messages.create.return_value = mock_response
+
+        result = _categorize_batch(mock_client, sample_transactions)
+
+        assert result == ["Rideshare"] * 5
+        fmt = mock_client.messages.create.call_args.kwargs["output_config"]["format"]
+        assert fmt["schema"] == CATEGORY_SCHEMA
+        item = CATEGORY_SCHEMA["properties"]["merchants"]["items"]
+        assert item["properties"]["category"]["enum"] == CATEGORIES
+        assert item["required"] == ["name", "category"]
+
+    def test_model_can_be_overridden(self, sample_transactions, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_MODEL", "claude-opus-5")
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='{"categories": []}')]
+        mock_client.messages.create.return_value = mock_response
+
+        _categorize_batch(mock_client, sample_transactions)
+
+        assert mock_client.messages.create.call_args.kwargs["model"] == "claude-opus-5"
+
+
+class TestMerchantNames:
+    """Claude returns a clean name with each category, and never sees personal fields."""
+
+    def _client(self, payload):
+        client = MagicMock()
+        response = MagicMock()
+        response.content = [MagicMock(text=json.dumps(payload))]
+        client.messages.create.return_value = response
+        return client
+
+    def test_names_come_back_with_categories(self):
+        txns = [
+            {"description": "PL*StateFinancia DES:WEB PMTS", "amount": -3850.0},
+            {"description": "easyJetKBQTWC2 Luton", "amount": -241.08},
+        ]
+        client = self._client(
+            {
+                "merchants": [
+                    {"name": "State Financial", "category": "Housing"},
+                    {"name": "easyJet", "category": "Travel"},
+                ]
+            }
+        )
+        assert _categorize_batch(client, txns, with_names=True) == [
+            ("Housing", "State Financial"),
+            ("Travel", "easyJet"),
+        ]
+        assert _categorize_batch(client, txns) == ["Housing", "Travel"]
+
+    def test_personal_fields_never_reach_the_prompt(self):
+        txns = [
+            {
+                "description": "PL*PAYLEASE DES:WEB PMTS ID:LS92D8 INDN:Jane Doe CO ID:9000287225",
+                "amount": -2.58,
+            }
+        ]
+        client = self._client({"merchants": [{"name": "PayLease", "category": "Housing"}]})
+        _categorize_batch(client, txns, with_names=True)
+        prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "Jane Doe" not in prompt and "LS92D8" not in prompt and "9000287225" not in prompt
+        assert "PAYLEASE" in prompt
+
+    def test_categorize_transactions_carries_the_name(self):
+        with patch("expense_tracker.categorizer.anthropic.Anthropic") as anthropic_cls:
+            anthropic_cls.return_value = self._client(
+                {"merchants": [{"name": "Whole Foods", "category": "Groceries"}]}
+            )
+            out = categorize_transactions(
+                [{"description": "WHOLEFDS SYM 10031", "amount": -12.0}], api_key="k"
+            )
+        assert out[0]["category"] == "Groceries" and out[0]["merchant_name"] == "Whole Foods"
+
+    def test_suggest_names_batches_and_pads(self):
+        from expense_tracker.categorizer import suggest_names
+
+        with patch("expense_tracker.categorizer.anthropic.Anthropic") as anthropic_cls:
+            anthropic_cls.return_value = self._client({"names": ["Ovpay"]})
+            names = suggest_names(["NLOVLD5D9X4PRQYJZ7 WWW.OVPAY.NL", "SHOP 2/ LOUNGE 2"], api_key="k")
+        assert names == ["Ovpay", None]

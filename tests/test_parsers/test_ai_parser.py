@@ -1,10 +1,11 @@
 """Tests for AI-powered statement parser."""
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch
 
-from parsers.ai_parser import AIParser
+import pytest
+
+from expense_tracker.parsers.ai_parser import AIParser
 
 
 class TestAIParser:
@@ -22,10 +23,7 @@ class TestAIParser:
             "bank_name": "Test Bank",
             "currency": "USD",
             "statement_type": "checking",
-            "statement_period": {
-                "start": "2025-01-01",
-                "end": "2025-01-31"
-            },
+            "statement_period": {"start": "2025-01-01", "end": "2025-01-31"},
             "opening_balance": 1000.00,
             "closing_balance": 1500.00,
             "transactions": [
@@ -33,21 +31,21 @@ class TestAIParser:
                     "date": "2025-01-15",
                     "description": "AMAZON PURCHASE",
                     "amount": -50.00,
-                    "is_internal_transfer": False
+                    "is_internal_transfer": False,
                 },
                 {
                     "date": "2025-01-20",
                     "description": "DIRECT DEPOSIT",
                     "amount": 2000.00,
-                    "is_internal_transfer": False
+                    "is_internal_transfer": False,
                 },
                 {
                     "date": "2025-01-25",
                     "description": "Transfer to Savings",
                     "amount": -500.00,
-                    "is_internal_transfer": True
-                }
-            ]
+                    "is_internal_transfer": True,
+                },
+            ],
         }
 
     # =========================================================================
@@ -91,7 +89,7 @@ class TestAIParser:
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not found"):
             parser.parse(pdf_path, "Some statement text")
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_success(self, mock_anthropic, parser, mock_ai_response, tmp_path):
         """Test successful parsing."""
         # Set up mock
@@ -110,7 +108,7 @@ class TestAIParser:
         assert result.opening_balance == 1000.00
         assert result.closing_balance == 1500.00
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_separates_transactions(self, mock_anthropic, parser, mock_ai_response, tmp_path):
         """Test that parse correctly separates expenses and income."""
         mock_client = MagicMock()
@@ -128,7 +126,7 @@ class TestAIParser:
         assert len(result.income) == 1
         assert result.income[0]["description"] == "DIRECT DEPOSIT"
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_filters_internal_transfers(self, mock_anthropic, parser, mock_ai_response, tmp_path):
         """Test that internal transfers are filtered from expenses/income."""
         mock_client = MagicMock()
@@ -144,7 +142,7 @@ class TestAIParser:
         assert len(result.transactions) == 3
         assert len(result.expenses) == 1  # Only the non-internal expense
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_handles_markdown_response(self, mock_anthropic, parser, mock_ai_response, tmp_path):
         """Test that markdown-wrapped JSON is handled correctly."""
         mock_client = MagicMock()
@@ -160,7 +158,7 @@ class TestAIParser:
 
         assert result.bank_name == "Test Bank"
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_handles_invalid_json(self, mock_anthropic, parser, tmp_path):
         """Test that invalid JSON response raises error."""
         mock_client = MagicMock()
@@ -174,33 +172,89 @@ class TestAIParser:
         with pytest.raises(ValueError, match="Failed to parse AI response as JSON"):
             parser.parse(pdf_path, "Sample statement")
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
-    def test_parse_truncates_long_text(self, mock_anthropic, parser, mock_ai_response, tmp_path):
-        """Test that very long text is truncated."""
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
+    def test_parse_sends_full_text(self, mock_anthropic, parser, mock_ai_response, tmp_path):
+        """Long statements are sent whole; dropping the middle would lose transactions."""
         mock_client = MagicMock()
         mock_anthropic.return_value = mock_client
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text=json.dumps(mock_ai_response))]
         mock_client.messages.create.return_value = mock_response
 
-        pdf_path = tmp_path / "test.pdf"
-        long_text = "x" * 100000  # Very long text
+        long_text = "a" * 60000 + "MIDDLE_MARKER" + "b" * 60000
+        parser.parse(tmp_path / "test.pdf", long_text)
 
-        result = parser.parse(pdf_path, long_text)
+        prompt = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "MIDDLE_MARKER" in prompt
 
-        # Verify the API was called with truncated text
-        call_args = mock_client.messages.create.call_args
-        prompt = call_args.kwargs["messages"][0]["content"]
-        assert "[truncated]" in prompt
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
+    def test_parse_uses_structured_output_schema(self, mock_anthropic, parser, mock_ai_response, tmp_path):
+        """The request constrains the reply to the extraction JSON schema."""
+        from expense_tracker.parsers.ai_parser import EXTRACTION_SCHEMA
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+        mock_client = MagicMock()
+        mock_anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=json.dumps(mock_ai_response))]
+        mock_client.messages.create.return_value = mock_response
+
+        parser.parse(tmp_path / "test.pdf", "Sample statement")
+
+        output_config = mock_client.messages.create.call_args.kwargs["output_config"]
+        assert output_config["format"] == {"type": "json_schema", "schema": EXTRACTION_SCHEMA}
+
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
+    def test_parse_raises_when_output_truncated(self, mock_anthropic, parser, tmp_path):
+        """A reply cut off at max_tokens raises instead of returning partial data."""
+        mock_client = MagicMock()
+        mock_anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.stop_reason = "max_tokens"
+        mock_response.content = [MagicMock(text='{"transactions": [')]
+        mock_client.messages.create.return_value = mock_response
+
+        with pytest.raises(ValueError, match="truncated"):
+            parser.parse(tmp_path / "test.pdf", "Sample statement")
+
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
+    def test_parse_raises_on_refusal(self, mock_anthropic, parser, tmp_path):
+        """A refusal raises a clear error."""
+        mock_client = MagicMock()
+        mock_anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.stop_reason = "refusal"
+        mock_response.content = []
+        mock_client.messages.create.return_value = mock_response
+
+        with pytest.raises(ValueError, match="declined"):
+            parser.parse(tmp_path / "test.pdf", "Sample statement")
+
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
+    def test_parse_reconciles_balances(self, mock_anthropic, parser, mock_ai_response, tmp_path):
+        """1000 opening - 50 + 2000 - 500 = 2450; statement says 1500 -> warning."""
+        mock_client = MagicMock()
+        mock_anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=json.dumps(mock_ai_response))]
+        mock_client.messages.create.return_value = mock_response
+
+        result = parser.parse(tmp_path / "test.pdf", "Sample statement")
+        assert len(result.warnings) == 1
+        assert "do not reconcile" in result.warnings[0]
+
+        mock_ai_response["closing_balance"] = 2450.00
+        mock_response.content = [MagicMock(text=json.dumps(mock_ai_response))]
+        result = parser.parse(tmp_path / "test.pdf", "Sample statement")
+        assert result.warnings == []
+
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_generates_bank_id(self, mock_anthropic, parser, tmp_path):
         """Test that bank_id is generated from bank_name."""
         response = {
             "bank_name": "Wells Fargo Bank",
             "currency": "USD",
             "statement_type": "checking",
-            "transactions": []
+            "transactions": [],
         }
 
         mock_client = MagicMock()
@@ -214,7 +268,7 @@ class TestAIParser:
 
         assert result.bank_id == "wells_fargo_bank"
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_detects_debt_payments(self, mock_anthropic, parser, tmp_path):
         """Test that debt payments are correctly identified."""
         response = {
@@ -226,9 +280,9 @@ class TestAIParser:
                     "date": "2025-01-15",
                     "description": "STUDENT LOAN PAYMENT",
                     "amount": -500.00,
-                    "is_internal_transfer": False
+                    "is_internal_transfer": False,
                 }
-            ]
+            ],
         }
 
         mock_client = MagicMock()
@@ -243,7 +297,7 @@ class TestAIParser:
         assert len(result.debt_payments) == 1
         assert result.debt_payments[0]["description"] == "STUDENT LOAN PAYMENT"
 
-    @patch("parsers.ai_parser.anthropic.Anthropic")
+    @patch("expense_tracker.parsers.ai_parser.anthropic.Anthropic")
     def test_parse_credit_card_no_income(self, mock_anthropic, parser, tmp_path):
         """Test that credit card payments aren't counted as income."""
         response = {
@@ -255,9 +309,9 @@ class TestAIParser:
                     "date": "2025-01-15",
                     "description": "PAYMENT THANK YOU",
                     "amount": 500.00,
-                    "is_internal_transfer": False
+                    "is_internal_transfer": False,
                 }
-            ]
+            ],
         }
 
         mock_client = MagicMock()

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint + tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: Browser for the UI tests
+        run: python -m playwright install --with-deps chromium
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Unit + integration tests
+        run: pytest --cov --cov-report=term-missing
+      - name: CLI smoke test
+        env:
+          EXPENSE_TRACKER_HOME: ${{ runner.temp }}/et-home
+        run: |
+          expense-tracker --version
+          expense-tracker init
+          python -c "from expense_tracker.cli import main; from expense_tracker.config import load_config; from expense_tracker.ledger import Ledger; from expense_tracker.demo import build_demo; c = load_config(); l = Ledger(c.db_path); build_demo(l, c); l.close()"
+          expense-tracker summary
+          expense-tracker report
+          expense-tracker export -f csv | head -3

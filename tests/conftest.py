@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 # Sample Data Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def sample_transactions():
     """Sample transactions for testing categorization."""
@@ -33,7 +34,12 @@ def sample_categorized_transactions():
     """Sample categorized transactions."""
     return [
         {"date": "2025-01-15", "description": "UBER TRIP", "amount": -25.50, "category": "Rideshare"},
-        {"date": "2025-01-16", "description": "WHOLE FOODS MARKET", "amount": -87.23, "category": "Groceries"},
+        {
+            "date": "2025-01-16",
+            "description": "WHOLE FOODS MARKET",
+            "amount": -87.23,
+            "category": "Groceries",
+        },
         {"date": "2025-01-17", "description": "NETFLIX.COM", "amount": -15.99, "category": "Entertainment"},
         {"date": "2025-01-18", "description": "SHELL GAS STATION", "amount": -45.00, "category": "Misc"},
         {"date": "2025-01-19", "description": "APPLE.COM/BILL", "amount": -9.99, "category": "Apple"},
@@ -66,6 +72,7 @@ def sample_balances():
 # ============================================================================
 # Bank Statement Text Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def boa_checking_text():
@@ -141,6 +148,7 @@ Ending balance on January 10, 2026            $12,000.00
 # Mock Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_anthropic_client():
     """Mock Anthropic client for testing AI features."""
@@ -179,6 +187,7 @@ def mock_smtp():
 # ============================================================================
 # Temporary File Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_data_dir(tmp_path):
@@ -220,6 +229,7 @@ def temp_threshold_file(temp_data_dir):
 # ============================================================================
 # Environment Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_env_vars():

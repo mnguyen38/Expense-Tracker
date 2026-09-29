@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "expense-tracker"
+dynamic = ["version"]
+description = "Import bank statement PDFs, categorize spending with Claude, and see where your money goes."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=1.8.0,<2",
+    "pdfplumber>=0.10.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+google = [
+    "gspread>=6.0.0",
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-api-python-client>=2.0.0",
+]
+dev = [
+    "expense-tracker[google]",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.6.0",
+    "fpdf2>=2.7.0",
+    "playwright>=1.40",
+]
+
+[project.scripts]
+expense-tracker = "expense_tracker.cli:main"
+
+[project.urls]
+Repository = "https://github.com/mnguyen38/Expense-Tracker"
+
+[tool.setuptools.dynamic]
+version = { attr = "expense_tracker.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["expense_tracker"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [".venv", "src/expense_tracker/_fonts.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = [
+    "E501",   # long prompt/HTML strings are clearer unwrapped
+    "S101",   # assert is idiomatic in tests
+    "S608",   # SQL is built from fixed fragments; values are always parameters
+    "S310",   # urlopen of fixed local URLs in tests
+    "B904",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108", "B017"]
+"scripts/**" = ["E402"]

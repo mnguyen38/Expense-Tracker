@@ -1,7 +1,8 @@
 """Tests for base parser classes and utilities."""
 
 import pytest
-from parsers.base import ParseResult, BaseParser
+
+from expense_tracker.parsers.base import BaseParser, ParseResult
 
 
 class TestParseResult:
@@ -25,9 +26,7 @@ class TestParseResult:
 
     def test_parse_result_with_transactions(self):
         """Test ParseResult with transaction data."""
-        transactions = [
-            {"date": "2025-01-15", "description": "Test", "amount": -50.00}
-        ]
+        transactions = [{"date": "2025-01-15", "description": "Test", "amount": -50.00}]
         result = ParseResult(
             bank_id="test",
             bank_name="Test",
@@ -242,3 +241,47 @@ class TestBaseParser:
         # Zero amount is neither expense nor income
         assert len(expenses) == 0
         assert len(income) == 0
+
+
+class TestReconcile:
+    """Balance reconciliation catches missing or misread transactions."""
+
+    def _result(self, statement_type, opening, closing, amounts):
+        return ParseResult(
+            bank_id="test",
+            bank_name="Test",
+            currency="USD",
+            statement_type=statement_type,
+            opening_balance=opening,
+            closing_balance=closing,
+            transactions=[{"amount": a} for a in amounts],
+        )
+
+    def test_bank_account_balances(self):
+        result = self._result("checking", 1000.0, 1450.0, [-50.0, 1000.0, -500.0])
+        assert result.reconcile() is True
+        assert result.warnings == []
+
+    def test_bank_account_missing_transaction(self):
+        result = self._result("checking", 1000.0, 1400.0, [-50.0, 1000.0, -500.0])
+        assert result.reconcile() is False
+        assert "off by -50.00" in result.warnings[0]
+
+    def test_credit_card_balance_is_debt(self):
+        # Owed 500, paid 500, spent 120 -> owe 120
+        result = self._result("credit_card", 500.0, 120.0, [500.0, -100.0, -20.0])
+        assert result.reconcile() is True
+
+    def test_float_rounding_within_tolerance(self):
+        result = self._result("savings", 0.0, 0.3, [0.1, 0.1, 0.1])
+        assert result.reconcile() is True
+
+    def test_missing_balance_is_inconclusive(self):
+        result = self._result("checking", None, 1450.0, [-50.0])
+        assert result.reconcile() is None
+        assert result.warnings == []
+
+    def test_warnings_in_dict(self):
+        result = self._result("checking", 0.0, 10.0, [])
+        result.reconcile()
+        assert len(result.to_dict()["warnings"]) == 1

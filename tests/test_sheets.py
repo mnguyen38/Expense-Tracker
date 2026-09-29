@@ -1,20 +1,19 @@
 """Tests for Google Sheets integration."""
 
-import pytest
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 
-from sheets import (
-    get_statement_month,
-    get_spreadsheet_id_from_url,
-    get_sheets_client,
-    sync_to_sheet,
-    sync_income_to_sheet,
-    sync_net_worth_to_sheet,
+import pytest
+
+from expense_tracker.sheets import (
     CATEGORY_COLUMNS,
     INCOME_COLUMNS,
     NET_WORTH_COLUMNS,
-    STATEMENT_CLOSE_DAY,
+    get_sheets_client,
+    get_spreadsheet_id_from_url,
+    get_statement_month,
+    sync_income_to_sheet,
+    sync_net_worth_to_sheet,
+    sync_to_sheet,
 )
 
 
@@ -95,8 +94,14 @@ class TestColumnMappings:
     def test_category_columns_complete(self):
         """Test that all expected categories have columns."""
         required_categories = [
-            "Housing", "Groceries", "Eating Out", "Rideshare",
-            "Entertainment", "Misc", "Apple", "Subscriptions"
+            "Housing",
+            "Groceries",
+            "Eating Out",
+            "Rideshare",
+            "Entertainment",
+            "Misc",
+            "Apple",
+            "Subscriptions",
         ]
         for cat in required_categories:
             assert cat in CATEGORY_COLUMNS
@@ -121,8 +126,8 @@ class TestGetSheetsClient:
         with pytest.raises(FileNotFoundError):
             get_sheets_client(tmp_path / "nonexistent.json")
 
-    @patch("sheets.gspread.authorize")
-    @patch("sheets.Credentials.from_service_account_file")
+    @patch("expense_tracker.sheets.gspread.authorize")
+    @patch("expense_tracker.sheets.Credentials.from_service_account_file")
     def test_creates_client_with_credentials(self, mock_credentials, mock_authorize, tmp_path):
         """Test that client is created with valid credentials."""
         # Create a mock credentials file
@@ -158,7 +163,7 @@ class TestSyncToSheet:
         spreadsheet.worksheet.return_value = mock_worksheet
         return spreadsheet
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_to_existing_month(self, mock_get_client, mock_spreadsheet, sample_categorized_transactions):
         """Test syncing to an existing month row."""
         mock_client = MagicMock()
@@ -175,7 +180,7 @@ class TestSyncToSheet:
         assert result["month"] == "1/2025"
         assert result["row"] == 2  # Row 2 has "1/2025"
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_to_new_month(self, mock_get_client, mock_spreadsheet, sample_categorized_transactions):
         """Test syncing to a new month row."""
         mock_client = MagicMock()
@@ -192,7 +197,7 @@ class TestSyncToSheet:
         assert result["month"] == "3/2025"
         assert result["row"] == 4  # Appended after existing 3 rows
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_calculates_totals(self, mock_get_client, mock_spreadsheet, sample_categorized_transactions):
         """Test that category totals are calculated."""
         mock_client = MagicMock()
@@ -209,7 +214,7 @@ class TestSyncToSheet:
         assert result["total_spent"] > 0
         assert len(result["categories_updated"]) > 0
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_replace_mode(self, mock_get_client, mock_spreadsheet, sample_categorized_transactions):
         """Test replace mode clears existing values."""
         mock_client = MagicMock()
@@ -247,7 +252,7 @@ class TestSyncIncomeToSheet:
         spreadsheet.worksheet.return_value = mock_worksheet
         return spreadsheet
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_income_empty_list(self, mock_get_client):
         """Test syncing empty income list."""
         result = sync_income_to_sheet(
@@ -259,8 +264,10 @@ class TestSyncIncomeToSheet:
         assert result["total_income"] == 0
         assert result["row"] is None
 
-    @patch("sheets.get_sheets_client")
-    def test_sync_income_calculates_total(self, mock_get_client, mock_spreadsheet, sample_income_transactions):
+    @patch("expense_tracker.sheets.get_sheets_client")
+    def test_sync_income_calculates_total(
+        self, mock_get_client, mock_spreadsheet, sample_income_transactions
+    ):
         """Test that income total is calculated."""
         mock_client = MagicMock()
         mock_client.open_by_key.return_value = mock_spreadsheet
@@ -276,7 +283,7 @@ class TestSyncIncomeToSheet:
         assert result["total_income"] == 3650.00  # 3500 + 150
         assert result["transactions_count"] == 2
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_income_add_mode(self, mock_get_client, mock_spreadsheet, sample_income_transactions):
         """Test add mode adds to existing value."""
         mock_client = MagicMock()
@@ -311,7 +318,7 @@ class TestSyncNetWorthToSheet:
         spreadsheet.worksheet.return_value = mock_worksheet
         return spreadsheet
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_net_worth(self, mock_get_client, mock_spreadsheet, sample_balances):
         """Test syncing net worth data."""
         mock_client = MagicMock()
@@ -330,7 +337,7 @@ class TestSyncNetWorthToSheet:
         assert result["credit_card_balance"] == 1234.56
         assert result["debt_payments"] == 850.00  # 500 + 350
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_net_worth_partial_balances(self, mock_get_client, mock_spreadsheet):
         """Test syncing with partial balance data."""
         mock_client = MagicMock()
@@ -354,7 +361,7 @@ class TestSyncNetWorthToSheet:
         assert result["savings_balance"] is None
         assert result["debt_payments"] == 0
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_sync_net_worth_creates_new_row(self, mock_get_client, mock_spreadsheet):
         """Test that new month row is created if not exists."""
         mock_client = MagicMock()
@@ -380,7 +387,7 @@ class TestSyncNetWorthToSheet:
 class TestAutoMonthDetection:
     """Tests for automatic month detection from transactions."""
 
-    @patch("sheets.get_sheets_client")
+    @patch("expense_tracker.sheets.get_sheets_client")
     def test_auto_detect_month_from_transactions(self, mock_get_client):
         """Test that month is auto-detected from transaction dates."""
         mock_client = MagicMock()

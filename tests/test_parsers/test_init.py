@@ -1,11 +1,12 @@
 """Tests for parser registry and dispatch module."""
 
-import pytest
-from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-import parsers
-from parsers import parse_statement, get_available_parsers, ParseResult, BaseParser
+import pytest
+
+from expense_tracker import parsers
+from expense_tracker.parsers import BaseParser, ParseResult, get_available_parsers, parse_statement
 
 
 class TestParserDiscovery:
@@ -36,7 +37,7 @@ class TestParserDiscovery:
 class TestTextExtraction:
     """Tests for PDF text extraction."""
 
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_extract_text_single_page(self, mock_pdfplumber):
         """Test extracting text from single page PDF."""
         mock_page = MagicMock()
@@ -51,7 +52,7 @@ class TestTextExtraction:
         result = parsers._extract_text(Path("test.pdf"))
         assert "Page 1 content" in result
 
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_extract_text_multiple_pages(self, mock_pdfplumber):
         """Test extracting text from multi-page PDF."""
         mock_pages = [MagicMock(), MagicMock()]
@@ -68,7 +69,7 @@ class TestTextExtraction:
         assert "Page 1" in result
         assert "Page 2" in result
 
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_extract_text_handles_none(self, mock_pdfplumber):
         """Test that None text from page is handled."""
         mock_page = MagicMock()
@@ -92,7 +93,7 @@ class TestParseStatement:
         with pytest.raises(FileNotFoundError):
             parse_statement("nonexistent.pdf")
 
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_parse_statement_uses_best_parser(self, mock_pdfplumber, boa_checking_text, tmp_path):
         """Test that parser with highest confidence is used."""
         # Create a temp PDF file
@@ -114,8 +115,8 @@ class TestParseStatement:
         assert result["bank_id"] == "boa"
         assert result["bank_name"] == "Bank of America"
 
-    @patch("parsers.AIParser")
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.AIParser")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_parse_statement_falls_back_to_ai(self, mock_pdfplumber, mock_ai_parser, tmp_path):
         """Test fallback to AI parser when no optimized parser matches."""
         # Create a temp PDF file
@@ -147,7 +148,7 @@ class TestParseStatement:
         assert result["bank_id"] == "ai_parsed"
         mock_parser_instance.parse.assert_called_once()
 
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_parse_statement_returns_dict(self, mock_pdfplumber, boa_checking_text, tmp_path):
         """Test that parse_statement returns a dictionary."""
         pdf_path = tmp_path / "test.pdf"
@@ -169,7 +170,7 @@ class TestParseStatement:
         assert "income" in result
         assert "all_transactions" in result
 
-    @patch("parsers.pdfplumber.open")
+    @patch("expense_tracker.parsers.pdfplumber.open")
     def test_parse_statement_accepts_string_path(self, mock_pdfplumber, boa_checking_text, tmp_path):
         """Test that parse_statement accepts string path."""
         pdf_path = tmp_path / "test.pdf"
@@ -204,7 +205,7 @@ class TestModuleExports:
 
     def test_can_import_classes(self):
         """Test that key classes can be imported."""
-        from parsers import ParseResult, StatementParser, BaseParser, AIParser
+        from expense_tracker.parsers import AIParser, ParseResult
 
         assert ParseResult is not None
         assert BaseParser is not None
